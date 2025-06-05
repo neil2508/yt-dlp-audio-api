@@ -1,66 +1,63 @@
-from fastapi import FastAPI, Query, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import uuid
 import yt_dlp
-import os
 import requests
+import uuid
+import os
 
 app = FastAPI()
 
-YT_DLP_AUDIO_DIR = "audio"
-WHISPER_API_URL = os.getenv("WHISPER_API_URL", "https://whisper-api-production-1c66.up.railway.app/transcribe")
+# Create temp directory if it doesn't exist
+TEMP_DIR = "temp_audio"
+os.makedirs(TEMP_DIR, exist_ok=True)
 
-os.makedirs(YT_DLP_AUDIO_DIR, exist_ok=True)
-
-class YouTubeRequest(BaseModel):
+class YouTubeURL(BaseModel):
     url: str
 
-@app.get("/")
-def root():
-    return {"status": "yt-dlp API is running"}
-
-@app.get("/download")
-def download_audio(url: str = Query(..., description="YouTube video URL")):
-    filename = f"{uuid.uuid4()}.webm"
-    filepath = os.path.join(YT_DLP_AUDIO_DIR, filename)
-
-    ydl_opts = {
-        "format": "bestaudio/best",
-        "outtmpl": filepath,
-        "quiet": True,
-    }
-
+@app.post("/transcribe-youtube")
+def transcribe_youtube(data: YouTubeURL):
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+        # Set up yt_dlp options to download best audio
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'quiet': True,
+            'outtmpl': f"{TEMP_DIR}/%(id)s.%(ext)s",
+        }
 
-        return {"download_url": f"/{YT_DLP_AUDIO_DIR}/{filename}"}
+        # Download video and extract info
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(data.url, download=True)
+            title = info.get('title')
+            file_path = ydl.prepare_filename(info)
+
+        # Open downloaded audio and send to Whisper API
+        with open(file_path, "rb") as f:
+            files = {
+                "file": (os.path.basename(file_path), f, "audio/webm")
+            }
+            response = requests.post(
+                "https://whisper-api-production-1c66.up.railway.app/transcribe",
+                files=files
+            )
+
+        # Handle transcription failure
+        if response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Transcription failed")
+
+        # Parse transcription result
+        transcription = response.json().get("transcription")
+
+        # Delete temp file
+        os.remove(file_path)
+
+        # Return both video title and transcript
+        return {
+            "title": title,
+            "transcription": transcription
+        }
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/transcribe-youtube")
-def transcribe_youtube(req: YouTubeRequest):
-    # Step 1: Call internal /download
-    dl_response = download_audio(url=req.url)
-    download_url = dl_response["download_url"]
-    local_path = download_url.lstrip("/")
-
-    if not os.path.exists(local_path):
-        raise HTTPException(status_code=500, detail="Audio file was not created.")
-
-    # Step 2: Send audio to whisper-api
-    try:
-        with open(local_path, "rb") as f:
-            response = requests.post(
-                WHISPER_API_URL,
-                files={"file": (os.path.basename(local_path), f, "audio/webm")},
-            )
-            response.raise_for_status()
-            return response.json()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
-    finally:
-        os.remove(local_path)
 
 
