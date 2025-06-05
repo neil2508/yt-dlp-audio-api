@@ -1,8 +1,9 @@
-from fastapi import FastAPI, Query
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, Query, HTTPException
+from fastapi.responses import FileResponse
 import yt_dlp
 import uuid
 import os
+import time
 
 app = FastAPI()
 
@@ -12,32 +13,38 @@ def root():
 
 @app.get("/download")
 def download_audio(url: str = Query(..., description="YouTube video URL")):
-    temp_filename = f"{uuid.uuid4()}.mp3"
-
+    filename = f"{uuid.uuid4()}.mp3"
     ydl_opts = {
         "format": "bestaudio/best",
-        "outtmpl": temp_filename,
+        "outtmpl": filename,
         "postprocessors": [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
             "preferredquality": "192",
         }],
-        "quiet": False,   # show errors in Railway logs
-        "verbose": True,
+        "quiet": True,
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+            result = ydl.download([url])
+            if result != 0:
+                raise Exception("yt-dlp failed to download or convert the video.")
+
+        # Check for the file and wait a moment if needed
+        timeout = 5
+        while not os.path.exists(filename) and timeout > 0:
+            time.sleep(1)
+            timeout -= 1
+
+        if not os.path.exists(filename):
+            raise FileNotFoundError(f"Audio file '{filename}' was not created.")
 
         return FileResponse(
-            path=temp_filename,
+            path=filename,
             filename="audio.mp3",
             media_type="audio/mpeg",
-            background=lambda: os.remove(temp_filename)
+            background=lambda: os.remove(filename)
         )
-
     except Exception as e:
-        print(f"[ERROR] Failed to process URL: {url}")
-        print(f"[ERROR] Exception: {e}")
-        return JSONResponse(content={"error": str(e)}, status_code=500)
+        raise HTTPException(status_code=500, detail=str(e))
