@@ -45,7 +45,7 @@ async def download_audio(url: str):
             ydl.download([url])
 
         if os.path.exists(output_path):
-            public_url = f"https://YOUR-APP-NAME.up.railway.app/audio/{audio_id}.webm"
+            public_url = f"https://yt-dlp-production-091e.up.railway.app/audio/{audio_id}.webm"
             return JSONResponse(content={"download_url": public_url})
 
         return JSONResponse(status_code=500, content={"error": "Audio file was not created."})
