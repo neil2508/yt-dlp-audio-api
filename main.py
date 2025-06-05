@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 import yt_dlp
 import uuid
 import os
@@ -13,6 +13,7 @@ def root():
 @app.get("/download")
 def download_audio(url: str = Query(..., description="YouTube video URL")):
     temp_filename = f"{uuid.uuid4()}.mp3"
+
     ydl_opts = {
         "format": "bestaudio/best",
         "outtmpl": temp_filename,
@@ -21,7 +22,8 @@ def download_audio(url: str = Query(..., description="YouTube video URL")):
             "preferredcodec": "mp3",
             "preferredquality": "192",
         }],
-        "quiet": True,
+        "quiet": False,   # show errors in Railway logs
+        "verbose": True,
     }
 
     try:
@@ -32,7 +34,10 @@ def download_audio(url: str = Query(..., description="YouTube video URL")):
             path=temp_filename,
             filename="audio.mp3",
             media_type="audio/mpeg",
-            background=lambda: os.remove(temp_filename),
+            background=lambda: os.remove(temp_filename)
         )
+
     except Exception as e:
-        return {"error": str(e)}
+        print(f"[ERROR] Failed to process URL: {url}")
+        print(f"[ERROR] Exception: {e}")
+        return JSONResponse(content={"error": str(e)}, status_code=500)
