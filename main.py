@@ -1,45 +1,54 @@
-from fastapi import FastAPI, Query
-from fastapi.responses import FileResponse, JSONResponse
-import yt_dlp
-import uuid
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
 import os
+import uuid
+import yt_dlp
 
 app = FastAPI()
 
+# Allow requests from anywhere
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Create an audio folder if it doesn't exist
+if not os.path.exists("audio"):
+    os.makedirs("audio")
+
+# Allow public access to the audio files
+app.mount("/audio", StaticFiles(directory="audio"), name="audio")
+
 @app.get("/")
 def root():
-    return {"status": "yt-dlp API is running"}
+    return {"message": "yt-dlp API is running"}
 
 @app.get("/download")
-def download_audio(url: str = Query(..., description="YouTube video URL")):
-    temp_filename = f"{uuid.uuid4()}.%(ext)s"
+async def download_audio(url: str):
     try:
+        audio_id = str(uuid.uuid4())
+        output_path = f"audio/{audio_id}.webm"
+
         ydl_opts = {
-            "format": "bestaudio/best",
-            "outtmpl": temp_filename,
-            "quiet": True,
-            "no_warnings": True,
+            'format': 'bestaudio/best',
+            'outtmpl': output_path,
+            'quiet': True
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            result = ydl.extract_info(url, download=True)
-            downloaded_file = ydl.prepare_filename(result)
+            ydl.download([url])
 
-        if not os.path.exists(downloaded_file):
-            return JSONResponse(
-                status_code=500,
-                content={"error": f"Audio file '{downloaded_file}' was not created."}
-            )
+        if os.path.exists(output_path):
+            public_url = f"https://YOUR-APP-NAME.up.railway.app/audio/{audio_id}.webm"
+            return JSONResponse(content={"download_url": public_url})
 
-        return FileResponse(
-            path=downloaded_file,
-            filename=os.path.basename(downloaded_file),
-            media_type="audio/webm" if downloaded_file.endswith(".webm") else "audio/mpeg"
-        )
+        return JSONResponse(status_code=500, content={"error": "Audio file was not created."})
 
     except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"error": str(e)}
-        )
-
+        return JSONResponse(status_code=500, content={"error": str(e)})
