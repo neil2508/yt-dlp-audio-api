@@ -47,7 +47,10 @@ ydl_opts = {
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
-        # Transcribe the audio
+print("Downloaded file should be at:", file_path)
+print("File exists?", os.path.exists(file_path))
+
+# Transcribe the audio
         with open(file_path, "rb") as audio_file:
             transcript_result = openai.Audio.transcribe(
                 model="whisper-1",
