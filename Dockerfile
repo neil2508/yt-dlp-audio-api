@@ -16,7 +16,7 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 
 # Copy app files
 COPY main.py .
-COPY cookies.txt .
+COPY cookies.txt .   # 👈 ADD THIS LINE
 
 
 # Run the API
