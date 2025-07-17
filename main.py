@@ -1,49 +1,39 @@
 from fastapi import FastAPI, Request
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse
 import yt_dlp
 import os
+import uuid
 
 app = FastAPI()
 
-class VideoURL(BaseModel):
-    url: str
-
 @app.get("/")
-def root():
-    return {"message": "YouTube audio downloader API is running."}
+async def root():
+    return {"message": "YouTube Audio Extractor is running"}
 
 @app.post("/transcribe-youtube")
-def transcribe_youtube(data: VideoURL):
-    url = data.url
+async def transcribe(request: Request):
+    data = await request.json()
+    url = data.get("url")
+    if not url:
+        return JSONResponse(status_code=400, content={"error": "Missing 'url' in request body"})
 
     try:
-        output_filename = "audio.%(ext)s"
+        output_path = f"/tmp/{uuid.uuid4()}.mp3"
         ydl_opts = {
             'format': 'bestaudio/best',
-            'outtmpl': output_filename,
+            'outtmpl': output_path,
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
                 'preferredquality': '192',
             }],
+            'quiet': True,
+            'noplaylist': True
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
-        # Find the downloaded file
-        downloaded_file = None
-        for ext in ['mp3', 'm4a', 'webm']:
-            fname = f"audio.{ext}"
-            if os.path.exists(fname):
-                downloaded_file = fname
-                break
-
-        if not downloaded_file:
-            return {"error": "No audio file found after download"}
-
-        return {"status": "success", "filename": downloaded_file}
-
+        return {"message": "Audio extracted", "file_path": output_path}
     except Exception as e:
-        return {"error": str(e)}
-
+        return JSONResponse(status_code=500, content={"error": str(e)})
