@@ -8,7 +8,7 @@ import uuid
 app = FastAPI()
 
 @app.get("/")
-async def root():
+def read_root():
     return {"message": "YouTube Audio Extractor is running"}
 
 class VideoURL(BaseModel):
