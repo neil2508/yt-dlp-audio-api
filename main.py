@@ -23,17 +23,17 @@ async def transcribe(video: VideoURL):
     try:
         output_path = f"/tmp/{uuid.uuid4()}.mp3"
         ydl_opts = {
-            'format': 'bestaudio/best',
-            'outtmpl': output_path,
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
-            'quiet': True,
-            'noplaylist': True
-        }
-
+    'format': 'bestaudio/best',
+    'outtmpl': f'/tmp/{uuid.uuid4()}.mp3',
+    'postprocessors': [{
+        'key': 'FFmpegExtractAudio',
+        'preferredcodec': 'mp3',
+        'preferredquality': '192',
+    }],
+    'cookiefile': 'cookies.txt',  # 👈 ADD THIS LINE
+    'quiet': True,
+    'noplaylist': True
+}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
