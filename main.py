@@ -1,63 +1,49 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Request
 from pydantic import BaseModel
 import yt_dlp
-import requests
-import uuid
 import os
 
 app = FastAPI()
 
-# Create temp directory if it doesn't exist
-TEMP_DIR = "temp_audio"
-os.makedirs(TEMP_DIR, exist_ok=True)
-
-class YouTubeURL(BaseModel):
+class VideoURL(BaseModel):
     url: str
 
+@app.get("/")
+def root():
+    return {"message": "YouTube audio downloader API is running."}
+
 @app.post("/transcribe-youtube")
-def transcribe_youtube(data: YouTubeURL):
+def transcribe_youtube(data: VideoURL):
+    url = data.url
+
     try:
-        # Set up yt_dlp options to download best audio
+        output_filename = "audio.%(ext)s"
         ydl_opts = {
             'format': 'bestaudio/best',
-            'quiet': True,
-            'outtmpl': f"{TEMP_DIR}/%(id)s.%(ext)s",
+            'outtmpl': output_filename,
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
         }
 
-        # Download video and extract info
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(data.url, download=True)
-            title = info.get('title')
-            file_path = ydl.prepare_filename(info)
+            ydl.download([url])
 
-        # Open downloaded audio and send to Whisper API
-        with open(file_path, "rb") as f:
-            files = {
-                "file": (os.path.basename(file_path), f, "audio/webm")
-            }
-            response = requests.post(
-                "https://whisper-api-production-1c66.up.railway.app/transcribe",
-                files=files
-            )
+        # Find the downloaded file
+        downloaded_file = None
+        for ext in ['mp3', 'm4a', 'webm']:
+            fname = f"audio.{ext}"
+            if os.path.exists(fname):
+                downloaded_file = fname
+                break
 
-        # Handle transcription failure
-        if response.status_code != 200:
-            raise HTTPException(status_code=500, detail="Transcription failed")
+        if not downloaded_file:
+            return {"error": "No audio file found after download"}
 
-        # Parse transcription result
-        transcription = response.json().get("transcription")
-
-        # Delete temp file
-        os.remove(file_path)
-
-        # Return both video title and transcript
-        return {
-            "title": title,
-            "transcription": transcription
-        }
+        return {"status": "success", "filename": downloaded_file}
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
+        return {"error": str(e)}
 
