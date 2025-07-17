@@ -26,22 +26,23 @@ async def transcribe_and_summarize(video: VideoURL):
 
     try:
         # Generate unique filename
-        unique_id = str(uuid.uuid4())
-        file_path = f"/tmp/{unique_id}.mp3"
+       unique_id = str(uuid.uuid4())
+file_path = f"/tmp/{unique_id}.mp3"
+yt_dlp_outtmpl = f"/tmp/{unique_id}.%(ext)s"
 
-        # Download audio using yt-dlp
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'outtmpl': file_path,
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
-            'cookiefile': 'cookies.txt',
-            'quiet': True,
-            'noplaylist': True
-        }
+ydl_opts = {
+    'format': 'bestaudio/best',
+    'outtmpl': ydl_outtmpl,
+    'postprocessors': [{
+        'key': 'FFmpegExtractAudio',
+        'preferredcodec': 'mp3',
+        'preferredquality': '192',
+    }],
+    'cookiefile': 'cookies.txt',
+    'quiet': True,
+    'noplaylist': True
+}
+
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
