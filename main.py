@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 import yt_dlp
 import os
 import uuid
@@ -10,10 +11,12 @@ app = FastAPI()
 async def root():
     return {"message": "YouTube Audio Extractor is running"}
 
+class VideoURL(BaseModel):
+    url: str
+
 @app.post("/transcribe-youtube")
-async def transcribe(request: Request):
-    data = await request.json()
-    url = data.get("url")
+async def transcribe(video: VideoURL):
+    url = video.url
     if not url:
         return JSONResponse(status_code=400, content={"error": "Missing 'url' in request body"})
 
@@ -37,4 +40,3 @@ async def transcribe(request: Request):
         return {"message": "Audio extracted", "file_path": output_path}
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
-
