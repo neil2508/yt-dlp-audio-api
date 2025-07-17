@@ -1,19 +1,3 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-import yt_dlp
-import uuid
-import os
-
-app = FastAPI()
-
-class VideoURL(BaseModel):
-    url: str
-
-@app.get("/")
-def read_root():
-    return {"message": "YouTube Audio Extractor is running"}
-
 @app.post("/transcribe-youtube")
 async def transcribe(video: VideoURL):
     url = video.url
@@ -23,17 +7,18 @@ async def transcribe(video: VideoURL):
     try:
         output_path = f"/tmp/{uuid.uuid4()}.mp3"
         ydl_opts = {
-    'format': 'bestaudio/best',
-    'outtmpl': f'/tmp/{uuid.uuid4()}.mp3',
-    'postprocessors': [{
-        'key': 'FFmpegExtractAudio',
-        'preferredcodec': 'mp3',
-        'preferredquality': '192',
-    }],
-    'cookiefile': 'cookies.txt',  # 👈 ADD THIS LINE
-    'quiet': True,
-    'noplaylist': True
-}
+            'format': 'bestaudio/best',
+            'outtmpl': output_path,
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'cookiefile': 'cookies.txt',
+            'quiet': True,
+            'noplaylist': True
+        }
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
