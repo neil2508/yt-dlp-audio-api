@@ -6,6 +6,44 @@ import uuid
 
 app = FastAPI()
 
+from fastapi import FastAPI
+from pydantic import BaseModel
+import yt_dlp
+import os
+
+app = FastAPI()
+
+@app.get("/")
+def read_root():
+    return {"message": "yt-dlp-audio-api is running"}
+
+class VideoURL(BaseModel):
+    url: str
+
+@app.post("/transcribe-youtube")
+def transcribe_youtube(video: VideoURL):
+    url = video.url
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': '/tmp/%(id)s.%(ext)s',
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            result = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(result).rsplit('.', 1)[0] + ".mp3"
+            if os.path.exists(filename):
+                return {"message": "Download successful", "file_path": filename}
+            else:
+                return {"error": "Download failed"}
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.get("/")
 async def root():
     return {"message": "YouTube Audio Extractor is running"}
