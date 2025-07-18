@@ -54,7 +54,7 @@ async def transcribe_youtube(video: VideoURL):
         summary_prompt = f"""
 You are an expert summariser. Your task is to summarise the following spoken transcript clearly and accurately.
 
-- Length: 450 to 500 words
+- Length: 350 to 400 words
 - Tone: neutral, factual, natural
 - Audience: general readers unfamiliar with the original video
 - Focus: main themes, key points, useful examples or insights
