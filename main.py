@@ -28,11 +28,10 @@ async def transcribe_youtube(video: VideoURL):
             'format': 'bestaudio/best',
             'outtmpl': f'/tmp/{unique_id}.%(ext)s',
             'postprocessors': [{
-    'key': 'FFmpegExtractAudio',
-    'preferredcodec': 'mp3',
-    'preferredquality': '64',
-}],
-
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '64',
+            }],
             'cookiefile': 'cookies.txt',
             'quiet': True,
             'noplaylist': True
@@ -52,18 +51,27 @@ async def transcribe_youtube(video: VideoURL):
                 response_format="text"
             )
 
-        summary_prompt = (
-            f"Please summarize the following YouTube transcript in 450–500 words, "
-            f"rewriting it as a blog post:\n\n{transcript}"
-        )
+        summary_prompt = f"""
+You are an expert summariser. Your task is to summarise the following spoken transcript clearly and accurately.
+
+- Length: 450 to 500 words
+- Tone: neutral, factual, natural
+- Audience: general readers unfamiliar with the original video
+- Focus: main themes, key points, useful examples or insights
+- Do not reference the video, speaker, or transcript directly
+- Avoid filler or speculation
+
+Transcript:
+{transcript}
+"""
 
         chat_response = client.chat.completions.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": "You are a helpful assistant who writes summaries as engaging blog posts."},
+                {"role": "system", "content": "You summarise transcripts clearly and concisely for a general audience."},
                 {"role": "user", "content": summary_prompt}
             ],
-            temperature=0.7
+            temperature=0.5
         )
 
         summary = chat_response.choices[0].message.content.strip()
@@ -71,3 +79,4 @@ async def transcribe_youtube(video: VideoURL):
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": f"Transcription failed: {str(e)}"})
+
