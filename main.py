@@ -4,19 +4,17 @@ from pydantic import BaseModel
 import yt_dlp
 import uuid
 import os
-import openai
+from openai import OpenAI
 
 app = FastAPI()
-
-# INSERT YOUR OPENAI API KEY HERE
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI()  # Uses OPENAI_API_KEY from environment variable
 
 class VideoURL(BaseModel):
     url: str
 
 @app.get("/")
 def read_root():
-    return {"message": "YouTube Audio Extractor and Transcriber is running"}
+    return {"message": "YouTube Audio Extractor & Transcriber is running"}
 
 @app.post("/transcribe-youtube")
 async def transcribe(video: VideoURL):
@@ -24,58 +22,53 @@ async def transcribe(video: VideoURL):
     if not url:
         return JSONResponse(status_code=400, content={"error": "Missing 'url' in request body"})
 
+    unique_id = str(uuid.uuid4())
+    output_path = f"/tmp/{unique_id}.mp3"
+
+    # Step 1: Download audio using yt-dlp
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': output_path,
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
+        'cookiefile': 'cookies.txt',
+        'quiet': True,
+        'noplaylist': True
+    }
+
     try:
-        # Generate a shared UUID for file naming
-        unique_id = str(uuid.uuid4())
-        base_path = f"/tmp/{unique_id}"
-        download_path = f"{base_path}.mp3"
-        output_template = f"{base_path}.%(ext)s"
-
-        # yt-dlp download options
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'outtmpl': output_template,
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
-            'cookiefile': 'cookies.txt',
-            'quiet': True,
-            'noplaylist': True
-        }
-
-        # Download the audio
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
-
-        if not os.path.exists(download_path):
-            return JSONResponse(status_code=500, content={"error": "Audio file was not created"})
-
-        # Transcribe with Whisper
-        with open(download_path, "rb") as audio_file:
-            transcription = openai.Audio.transcribe("whisper-1", audio_file)
-
-        transcript_text = transcription.get("text", "")
-        if not transcript_text:
-            return JSONResponse(status_code=500, content={"error": "Transcription failed"})
-
-        # Summarize with GPT
-        summary_prompt = f"Summarize the following transcript into a short blog-style summary (200–250 words):\n\n{transcript_text}"
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant who rewrites transcripts into engaging blog summaries."},
-                {"role": "user", "content": summary_prompt}
-            ],
-            temperature=0.7,
-            max_tokens=400
-        )
-
-        summary_text = response["choices"][0]["message"]["content"]
-        return {
-            "summary": summary_text.strip()
-        }
-
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content={"error": f"Audio download failed: {str(e)}"})
+
+    # Step 2: Transcribe using OpenAI Whisper
+    try:
+        with open(output_path, "rb") as f:
+            transcript = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=f
+            )
+        os.remove(output_path)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"Transcription failed: {str(e)}"})
+
+    # Step 3: Summarize using GPT
+    try:
+        summary_prompt = f"Summarize this YouTube transcript in 200–250 words for a blog post:\n\n{transcript.text}"
+        summary_response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": summary_prompt}],
+            temperature=0.7
+        )
+        summary = summary_response.choices[0].message.content
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"Summary failed: {str(e)}"})
+
+    return {
+        "transcript": transcript.text,
+        "summary": summary
+    }
