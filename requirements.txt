@@ -1,4 +1,4 @@
 fastapi
 uvicorn
 yt-dlp
-openai
+openai>=1.0.0
