@@ -53,7 +53,7 @@ async def transcribe_youtube(video: VideoURL):
             )
 
         summary_prompt = (
-            f"Please summarize the following YouTube transcript in 350–500 words, "
+            f"Please summarize the following YouTube transcript in 450–500 words, "
             f"rewriting it as a blog post:\n\n{transcript}"
         )
 
