@@ -28,10 +28,11 @@ async def transcribe_youtube(video: VideoURL):
             'format': 'bestaudio/best',
             'outtmpl': f'/tmp/{unique_id}.%(ext)s',
             'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
+    'key': 'FFmpegExtractAudio',
+    'preferredcodec': 'mp3',
+    'preferredquality': '64',
+}],
+
             'cookiefile': 'cookies.txt',
             'quiet': True,
             'noplaylist': True
