@@ -1,14 +1,12 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import yt_dlp
 import uuid
 import os
-import openai
-
 from openai import OpenAI
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 app = FastAPI()
 
 class VideoURL(BaseModel):
@@ -25,14 +23,10 @@ async def transcribe_youtube(video: VideoURL):
         return JSONResponse(status_code=400, content={"error": "Missing 'url' in request body"})
 
     try:
-        # Generate output path
         unique_id = str(uuid.uuid4())
-        output_path = f"/tmp/{unique_id}.mp3"
-
-        # yt-dlp config
         ydl_opts = {
             'format': 'bestaudio/best',
-            'outtmpl': output_path,
+            'outtmpl': f'/tmp/{unique_id}.%(ext)s',
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
@@ -43,15 +37,13 @@ async def transcribe_youtube(video: VideoURL):
             'noplaylist': True
         }
 
-        # Download audio
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.download([url])
+            info_dict = ydl.extract_info(url, download=True)
+            output_path = ydl.prepare_filename(info_dict).replace(".webm", ".mp3").replace(".m4a", ".mp3")
 
-        # Confirm file exists
         if not os.path.exists(output_path):
             return JSONResponse(status_code=500, content={"error": f"Download failed: {output_path} not found"})
 
-        # Transcribe using OpenAI Whisper
         with open(output_path, "rb") as audio_file:
             transcript = client.audio.transcriptions.create(
                 model="whisper-1",
@@ -59,7 +51,6 @@ async def transcribe_youtube(video: VideoURL):
                 response_format="text"
             )
 
-        # Summarize using GPT
         summary_prompt = (
             f"Please summarize the following YouTube transcript in 200–250 words, "
             f"rewriting it as a blog post:\n\n{transcript}"
@@ -75,10 +66,7 @@ async def transcribe_youtube(video: VideoURL):
         )
 
         summary = chat_response.choices[0].message.content.strip()
-
-        return {
-            "summary": summary
-        }
+        return {"summary": summary}
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": f"Transcription failed: {str(e)}"})
