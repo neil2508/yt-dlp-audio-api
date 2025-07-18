@@ -4,71 +4,81 @@ from pydantic import BaseModel
 import yt_dlp
 import uuid
 import os
+import openai
+
 from openai import OpenAI
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 app = FastAPI()
-client = OpenAI()  # Uses OPENAI_API_KEY from environment variable
 
 class VideoURL(BaseModel):
     url: str
 
 @app.get("/")
 def read_root():
-    return {"message": "YouTube Audio Extractor & Transcriber is running"}
+    return {"message": "YouTube Audio Extractor + Transcriber is running"}
 
 @app.post("/transcribe-youtube")
-async def transcribe(video: VideoURL):
+async def transcribe_youtube(video: VideoURL):
     url = video.url
     if not url:
         return JSONResponse(status_code=400, content={"error": "Missing 'url' in request body"})
 
-    unique_id = str(uuid.uuid4())
-    output_path = f"/tmp/{unique_id}.mp3"
-
-    # Step 1: Download audio using yt-dlp
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'outtmpl': output_path,
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
-        'cookiefile': 'cookies.txt',
-        'quiet': True,
-        'noplaylist': True
-    }
-
     try:
+        # Generate output path
+        unique_id = str(uuid.uuid4())
+        output_path = f"/tmp/{unique_id}.mp3"
+
+        # yt-dlp config
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': output_path,
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'cookiefile': 'cookies.txt',
+            'quiet': True,
+            'noplaylist': True
+        }
+
+        # Download audio
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": f"Audio download failed: {str(e)}"})
+            info = ydl.download([url])
 
-    # Step 2: Transcribe using OpenAI Whisper
-    try:
-        with open(output_path, "rb") as f:
+        # Confirm file exists
+        if not os.path.exists(output_path):
+            return JSONResponse(status_code=500, content={"error": f"Download failed: {output_path} not found"})
+
+        # Transcribe using OpenAI Whisper
+        with open(output_path, "rb") as audio_file:
             transcript = client.audio.transcriptions.create(
                 model="whisper-1",
-                file=f
+                file=audio_file,
+                response_format="text"
             )
-        os.remove(output_path)
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": f"Transcription failed: {str(e)}"})
 
-    # Step 3: Summarize using GPT
-    try:
-        summary_prompt = f"Summarize this YouTube transcript in 200–250 words for a blog post:\n\n{transcript.text}"
-        summary_response = client.chat.completions.create(
+        # Summarize using GPT
+        summary_prompt = (
+            f"Please summarize the following YouTube transcript in 200–250 words, "
+            f"rewriting it as a blog post:\n\n{transcript}"
+        )
+
+        chat_response = client.chat.completions.create(
             model="gpt-4",
-            messages=[{"role": "user", "content": summary_prompt}],
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant who writes summaries as engaging blog posts."},
+                {"role": "user", "content": summary_prompt}
+            ],
             temperature=0.7
         )
-        summary = summary_response.choices[0].message.content
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": f"Summary failed: {str(e)}"})
 
-    return {
-        "transcript": transcript.text,
-        "summary": summary
-    }
+        summary = chat_response.choices[0].message.content.strip()
+
+        return {
+            "summary": summary
+        }
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"Transcription failed: {str(e)}"})
